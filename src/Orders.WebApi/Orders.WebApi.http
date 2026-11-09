@@ -1,5 +1,7 @@
 @baseUrl = http://localhost:8000
 
+# Interactive alternative: Swagger UI at http://localhost:8000/swagger (OpenAPI document: /openapi/v1.json).
+
 # IDs in the seeded database are random per container. Take an order ID from
 # "Get all orders" and a product ID from "Get order by ID", then paste them below.
 @orderId = 00000000-0000-0000-0000-000000000000
