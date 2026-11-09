@@ -11,6 +11,8 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.ToTable("order");
         builder.HasKey(x => x.Id);
 
+        builder.Property(x => x.Version).IsConcurrencyToken();
+
         builder.HasOne(x => x.Status)
             .WithMany()
             .HasForeignKey(x => x.StatusId);

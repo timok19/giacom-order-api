@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS `order` (
   `CustomerId` binary(16) NOT NULL,
   `StatusId` binary(16) NOT NULL,
   `CreatedDate` datetime NOT NULL,  
+  `Version` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`Id`),
   KEY `StatusId` (`StatusId`),
   KEY `CustomerId` (`CustomerId`),

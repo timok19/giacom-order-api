@@ -156,6 +156,43 @@ public class OrderTests
         Assert.That(exception!.Message, Does.EndWith("'Completed' is a final status."));
     }
 
+    [Test]
+    public void Create_StartsAtVersionZero()
+    {
+        // Act
+        var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, 1)], CreatedDate);
+
+        // Assert
+        Assert.That(order.Version, Is.Zero);
+    }
+
+    [Test]
+    public void ChangeStatus_IncrementsVersion()
+    {
+        // Arrange
+        var order = CreateOrderInStatus(OrderStatus.Created);
+
+        // Act
+        order.ChangeStatus(_inProgressStatus);
+        order.ChangeStatus(_completedStatus);
+
+        // Assert
+        Assert.That(order.Version, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void ChangeStatus_KeepsVersion_WhenTransitionIsNotAllowed()
+    {
+        // Arrange
+        var order = CreateOrderInStatus(OrderStatus.Created);
+
+        // Act
+        Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_failedStatus));
+
+        // Assert
+        Assert.That(order.Version, Is.Zero);
+    }
+
     private Order CreateOrderInStatus(string status)
     {
         var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, 1)], CreatedDate);

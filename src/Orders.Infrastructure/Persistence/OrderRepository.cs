@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Orders.Application.Abstractions;
 using Orders.Application.Dtos;
+using Orders.Application.Exceptions;
 using Orders.Domain.Entities;
 
 namespace Orders.Infrastructure.Persistence;
@@ -43,6 +44,7 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
                 x.StatusId,
                 x.Status.Name,
                 AsUtc(x.CreatedDate),
+                x.Version,
                 x.Items.Sum(i => i.Quantity * i.Product.UnitCost),
                 x.Items.Sum(i => i.Quantity * i.Product.UnitPrice),
                 x.Items
@@ -107,7 +109,14 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
-        await dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            throw new ConcurrencyConflictException("The order was changed by another request. Reload it and try again.", exception);
+        }
     }
 
     // The datetime columns hold UTC values without an offset.
