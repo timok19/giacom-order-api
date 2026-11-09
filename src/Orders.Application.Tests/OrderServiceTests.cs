@@ -300,6 +300,23 @@ public class OrderServiceTests
     }
 
     [Test]
+    public async Task UpdateOrderStatusAsync_SetsCompletedDateToCurrentUtcTime_WhenOrderIsCompleted()
+    {
+        // Arrange
+        var orderId = await AddOrderAsync(1, OrderStatus.InProgress);
+        _timeProvider.UtcNow = new DateTimeOffset(2026, 12, 1, 9, 30, 0, TimeSpan.Zero);
+
+        // Act
+        await _orderService.UpdateOrderStatusAsync(orderId, "Completed", CancellationToken.None);
+
+        // Assert
+        var order = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
+        var summary = (await _orderService.GetOrdersByStatusAsync("Completed", CancellationToken.None)).Single();
+        Assert.That(order!.CompletedDate, Is.EqualTo(_timeProvider.UtcNow));
+        Assert.That(summary.CompletedDate, Is.EqualTo(_timeProvider.UtcNow));
+    }
+
+    [Test]
     public async Task UpdateOrderStatusAsync_IncrementsVersion()
     {
         // Arrange
@@ -328,7 +345,7 @@ public class OrderServiceTests
 
         await _orderService.UpdateOrderStatusAsync(orderId, "InProgress", CancellationToken.None);
 
-        staleOrder!.ChangeStatus(statuses.Single(x => x.Is(OrderStatus.InProgress)));
+        staleOrder!.ChangeStatus(statuses.Single(x => x.Is(OrderStatus.InProgress)), Now);
 
         // Act & Assert
         await Assert.ThrowsAsync<ConcurrencyConflictException>(() => requestARepository.SaveChangesAsync(CancellationToken.None));
@@ -535,13 +552,13 @@ public class OrderServiceTests
     }
 
     [Test]
-    public async Task GetMonthlyProfitAsync_ReturnsProfitOfCompletedOrdersGroupedByMonth()
+    public async Task GetMonthlyProfitAsync_ReturnsProfitOfCompletedOrdersGroupedByCompletionMonth()
     {
         // Arrange
-        await AddOrderAsync(1, OrderStatus.Completed, new DateTime(2019, 1, 1));
-        await AddOrderAsync(2, OrderStatus.Completed, new DateTime(2019, 1, 31, 23, 59, 59));
-        await AddOrderAsync(4, OrderStatus.Completed, new DateTime(2019, 3, 15));
-        await AddOrderAsync(5, OrderStatus.Completed, new DateTime(2018, 3, 15));
+        await AddOrderAsync(1, OrderStatus.Completed, completedDate: new DateTime(2019, 1, 1));
+        await AddOrderAsync(2, OrderStatus.Completed, completedDate: new DateTime(2019, 1, 31, 23, 59, 59));
+        await AddOrderAsync(4, OrderStatus.Completed, completedDate: new DateTime(2019, 3, 15));
+        await AddOrderAsync(5, OrderStatus.Completed, completedDate: new DateTime(2018, 3, 15));
 
         // Act
         var profits = await _orderService.GetMonthlyProfitAsync(CancellationToken.None);
@@ -560,7 +577,7 @@ public class OrderServiceTests
     {
         // Arrange
         var createdDate = new DateTime(2019, 1, 15);
-        await AddOrderAsync(1, OrderStatus.Completed, createdDate);
+        await AddOrderAsync(1, OrderStatus.Completed, completedDate: createdDate);
         await AddOrderAsync(10, OrderStatus.Created, createdDate);
         await AddOrderAsync(10, OrderStatus.InProgress, createdDate);
         await AddOrderAsync(10, OrderStatus.Failed, createdDate);
@@ -571,6 +588,34 @@ public class OrderServiceTests
 
         // Assert
         Assert.That(profits, Is.EqualTo(new[] { new MonthlyProfit(2019, 1, 0.1m) }));
+    }
+
+    [Test]
+    public async Task GetMonthlyProfitAsync_UsesCompletionMonth_WhenOrderWasCreatedInAnEarlierMonth()
+    {
+        // Arrange
+        await AddOrderAsync(1, OrderStatus.Completed, createdDate: new DateTime(2019, 1, 20), completedDate: new DateTime(2019, 3, 2));
+
+        // Act
+        var profits = await _orderService.GetMonthlyProfitAsync(CancellationToken.None);
+
+        // Assert
+        Assert.That(profits, Is.EqualTo(new[] { new MonthlyProfit(2019, 3, 0.1m) }));
+    }
+
+    [Test]
+    public async Task GetMonthlyProfitAsync_IncludesOrderCompletedThroughTheService()
+    {
+        // Arrange
+        var orderId = await AddOrderAsync(2, OrderStatus.InProgress, createdDate: new DateTime(2026, 10, 31));
+        _timeProvider.UtcNow = new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero);
+        await _orderService.UpdateOrderStatusAsync(orderId, "Completed", CancellationToken.None);
+
+        // Act
+        var profits = await _orderService.GetMonthlyProfitAsync(CancellationToken.None);
+
+        // Assert
+        Assert.That(profits, Is.EqualTo(new[] { new MonthlyProfit(2026, 11, 0.2m) }));
     }
 
     [Test]
@@ -614,14 +659,15 @@ public class OrderServiceTests
 
     /// <summary>
     /// Adds an order through the domain model, walking the workflow to reach <paramref name="status"/>.
+    /// Status changes happen at <paramref name="completedDate"/>, falling back to the creation date.
     /// </summary>
-    private async Task<Guid> AddOrderAsync(int quantity, string status = OrderStatus.Created, DateTime? createdDate = null)
+    private async Task<Guid> AddOrderAsync(int quantity, string status = OrderStatus.Created, DateTime? createdDate = null, DateTime? completedDate = null)
     {
         var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, quantity)], createdDate ?? Now);
 
         foreach (var nextStatus in GetWorkflowPathTo(status))
         {
-            order.ChangeStatus(GetStatus(nextStatus));
+            order.ChangeStatus(GetStatus(nextStatus), completedDate ?? createdDate ?? Now);
         }
 
         _dbContext.Orders.Add(order);

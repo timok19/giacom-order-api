@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS `order` (
   `StatusId` binary(16) NOT NULL,
   `CreatedDate` datetime NOT NULL,  
   `Version` int(11) NOT NULL DEFAULT 0,
+  `CompletedDate` datetime NULL,
   PRIMARY KEY (`Id`),
   KEY `StatusId` (`StatusId`),
   KEY `CustomerId` (`CustomerId`),
@@ -169,8 +170,9 @@ WHILE @OrderNumber <= @OrdersToCreate DO
 	SET @RandomOrderStatusId = guidToBin(ELT(@RandomOrderStatusIndex, binToGuid(@OrderStatusCreated), binToGuid(@OrderStatusInProgress), binToGuid(@OrderStatusFailed), binToGuid(@OrderStatusCompleted)));		
 	SET @RandomCreatedDate = FROM_UNIXTIME(UNIX_TIMESTAMP('2018-01-01 00:00:00') + FLOOR(0 + (RAND() * 63072000)));
 
-	INSERT IGNORE INTO `order` (`Id`, `ResellerId`, `CustomerId`, `StatusId`, `CreatedDate`) VALUES
-		(@RandomOrderId, @RandomResellerId, randomGuid(), @RandomOrderStatusId, @RandomCreatedDate);
+	-- Seeded orders have no recorded completion time, so completed ones use their creation time (status index 4 = Completed)
+	INSERT IGNORE INTO `order` (`Id`, `ResellerId`, `CustomerId`, `StatusId`, `CreatedDate`, `CompletedDate`) VALUES
+		(@RandomOrderId, @RandomResellerId, randomGuid(), @RandomOrderStatusId, @RandomCreatedDate, IF(@RandomOrderStatusIndex = 4, @RandomCreatedDate, NULL));
 		
 	-- Insert Order Item(s)
 	SET @ItemNumber = 1;
