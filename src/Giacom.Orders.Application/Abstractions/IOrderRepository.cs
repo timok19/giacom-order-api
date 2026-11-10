@@ -9,8 +9,8 @@ namespace Giacom.Orders.Application.Abstractions;
 /// </summary>
 public interface IOrderRepository
 {
-    /// <summary>Order summaries, newest first, optionally filtered by status.</summary>
-    Task<IReadOnlyList<OrderSummary>> GetOrderSummariesAsync(Guid? statusId, CancellationToken cancellationToken);
+    /// <summary>A page of order summaries, newest first, optionally filtered by status.</summary>
+    Task<PagedResult<OrderSummary>> GetOrderSummariesAsync(Guid? statusId, int page, int pageSize, CancellationToken cancellationToken);
 
     Task<OrderDetail?> GetOrderDetailAsync(Guid orderId, CancellationToken cancellationToken);
 

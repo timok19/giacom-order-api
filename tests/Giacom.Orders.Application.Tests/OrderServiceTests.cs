@@ -1,10 +1,12 @@
 ﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Giacom.Orders.Application.Dtos;
 using Giacom.Orders.Application.Exceptions;
 using Giacom.Orders.Application.Services;
 using Giacom.Orders.Domain.Entities;
 using Giacom.Orders.Infrastructure.Persistence;
+using Giacom.Orders.Tests;
 
 namespace Giacom.Orders.Application.Tests;
 
@@ -34,7 +36,7 @@ public class OrderServiceTests
         await _dbContext.Database.EnsureCreatedAsync();
 
         _timeProvider = new FixedTimeProvider(Now);
-        _orderService = new OrderService(new OrderRepository(_dbContext), _timeProvider);
+        _orderService = new OrderService(new OrderRepository(_dbContext), _timeProvider, NullLogger<OrderService>.Instance);
 
         await AddReferenceDataAsync();
     }
@@ -55,7 +57,7 @@ public class OrderServiceTests
         await AddOrderAsync(3);
 
         // Act
-        var orders = await _orderService.GetOrdersAsync(CancellationToken.None);
+        var orders = (await _orderService.GetOrdersAsync(1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
 
         // Assert
         Assert.That(orders, Has.Count.EqualTo(3));
@@ -70,7 +72,7 @@ public class OrderServiceTests
         var orderId3 = await AddOrderAsync(3);
 
         // Act
-        var orders = await _orderService.GetOrdersAsync(CancellationToken.None);
+        var orders = (await _orderService.GetOrdersAsync(1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
 
         // Assert
         AssertTotals(orders.Single(x => x.Id == orderId1), 0.8m, 0.9m);
@@ -86,10 +88,96 @@ public class OrderServiceTests
         var newerOrderId = await AddOrderAsync(1, createdDate: Now);
 
         // Act
-        var orders = await _orderService.GetOrdersAsync(CancellationToken.None);
+        var orders = (await _orderService.GetOrdersAsync(1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
 
         // Assert
         Assert.That(orders.Select(x => x.Id), Is.EqualTo(new[] { newerOrderId, olderOrderId }));
+    }
+
+    [Test]
+    public async Task GetOrdersAsync_ReturnsRequestedPageAndTotalCount()
+    {
+        // Arrange: five orders, one day apart; the newest comes first.
+        var orderIds = new List<Guid>();
+        for (var day = 1; day <= 5; day++)
+        {
+            orderIds.Add(await AddOrderAsync(1, createdDate: new DateTime(2019, 1, day)));
+        }
+
+        // Act
+        var page = await _orderService.GetOrdersAsync(2, 2, CancellationToken.None);
+
+        // Assert
+        Assert.That(page.Items.Select(x => x.Id), Is.EqualTo(new[] { orderIds[2], orderIds[1] }));
+        Assert.That(page.Page, Is.EqualTo(2));
+        Assert.That(page.PageSize, Is.EqualTo(2));
+        Assert.That(page.TotalCount, Is.EqualTo(5));
+    }
+
+    [Test]
+    public async Task GetOrdersAsync_ReturnsEmptyPage_WhenPageIsBeyondTheLastOrder()
+    {
+        // Arrange
+        await AddOrderAsync(1);
+
+        // Act
+        var page = await _orderService.GetOrdersAsync(int.MaxValue, OrderLimits.MaxPageSize, CancellationToken.None);
+
+        // Assert
+        Assert.That(page.Items, Is.Empty);
+        Assert.That(page.TotalCount, Is.EqualTo(1));
+    }
+
+    [TestCase(0, 10, "page")]
+    [TestCase(1, 0, "pageSize")]
+    [TestCase(1, OrderLimits.MaxPageSize + 1, "pageSize")]
+    public async Task GetOrdersAsync_ThrowsValidationException_WhenPagingIsNotValid(int page, int pageSize, string expectedKey)
+    {
+        // Act
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => _orderService.GetOrdersAsync(page, pageSize, CancellationToken.None));
+
+        // Assert
+        Assert.That(exception!.Errors.Keys, Is.EquivalentTo(new[] { expectedKey }));
+    }
+
+    [Test]
+    public async Task GetOrdersByStatusAsync_CountsOnlyOrdersWithSpecifiedStatus()
+    {
+        // Arrange
+        await AddOrderAsync(1, OrderStatus.Failed);
+        await AddOrderAsync(1, OrderStatus.Failed);
+        await AddOrderAsync(1, OrderStatus.Failed);
+        await AddOrderAsync(1);
+
+        // Act
+        var page = await _orderService.GetOrdersByStatusAsync("Failed", 1, 2, CancellationToken.None);
+
+        // Assert
+        Assert.That(page.Items, Has.Count.EqualTo(2));
+        Assert.That(page.TotalCount, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task CreateOrderAsync_ThrowsValidationException_WhenThereAreTooManyItems()
+    {
+        // Arrange
+        var items = Enumerable.Range(0, OrderLimits.MaxItemsPerOrder + 1)
+            .Select(_ => (CreateOrderItemRequest?)new CreateOrderItemRequest(_mailboxProduct.Id, 1))
+            .ToList();
+        var request = CreateValidOrderRequest() with { Items = items };
+
+        // Act & Assert
+        await AssertValidationErrorsAsync(request, "Items");
+    }
+
+    [Test]
+    public async Task CreateOrderAsync_ThrowsValidationException_WhenQuantityIsTooLarge()
+    {
+        // Arrange
+        var request = CreateValidOrderRequest(OrderLimits.MaxQuantityPerItem + 1);
+
+        // Act & Assert
+        await AssertValidationErrorsAsync(request, "Items[0].Quantity");
     }
 
     [Test]
@@ -155,7 +243,7 @@ public class OrderServiceTests
         await AddOrderAsync(4);
 
         // Act
-        var orders = await _orderService.GetOrdersByStatusAsync("Failed", CancellationToken.None);
+        var orders = (await _orderService.GetOrdersByStatusAsync("Failed", 1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
 
         // Assert
         Assert.That(orders.Select(x => x.Id), Is.EquivalentTo(new[] { failedOrderId1, failedOrderId2 }));
@@ -173,7 +261,7 @@ public class OrderServiceTests
         await AddOrderAsync(1);
 
         // Act
-        var orders = await _orderService.GetOrdersByStatusAsync(status, CancellationToken.None);
+        var orders = (await _orderService.GetOrdersByStatusAsync(status, 1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
 
         // Assert
         Assert.That(orders.Single().Id, Is.EqualTo(orderId));
@@ -186,7 +274,7 @@ public class OrderServiceTests
         await AddOrderAsync(2, OrderStatus.Failed);
 
         // Act
-        var orders = await _orderService.GetOrdersByStatusAsync("Failed", CancellationToken.None);
+        var orders = (await _orderService.GetOrdersByStatusAsync("Failed", 1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
 
         // Assert
         var order = orders.Single();
@@ -201,7 +289,7 @@ public class OrderServiceTests
         await AddOrderAsync(1);
 
         // Act
-        var orders = await _orderService.GetOrdersByStatusAsync("Completed", CancellationToken.None);
+        var orders = (await _orderService.GetOrdersByStatusAsync("Completed", 1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
 
         // Assert
         Assert.That(orders, Is.Empty);
@@ -213,7 +301,7 @@ public class OrderServiceTests
     public async Task GetOrdersByStatusAsync_ThrowsValidationException_WhenStatusIsNotValid(string? status)
     {
         // Act
-        var exception = await Assert.ThrowsAsync<ValidationException>(() => _orderService.GetOrdersByStatusAsync(status, CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => _orderService.GetOrdersByStatusAsync(status, 1, OrderLimits.MaxPageSize, CancellationToken.None));
 
         // Assert
         Assert.That(exception!.Errors.Keys, Is.EquivalentTo(new[] { "Status" }));
@@ -250,10 +338,12 @@ public class OrderServiceTests
         Assert.That(otherOrder!.StatusName, Is.EqualTo("Created"));
     }
 
+    // The full status matrix is covered by the domain tests.
     [TestCase(OrderStatus.Created, OrderStatus.InProgress)]
     [TestCase(OrderStatus.InProgress, OrderStatus.Completed)]
-    [TestCase(OrderStatus.InProgress, OrderStatus.Failed)]
-    public async Task UpdateOrderStatusAsync_UpdatesOrderStatus_WhenTransitionIsAllowed(string currentStatus, string newStatus)
+    [TestCase(OrderStatus.Failed, OrderStatus.InProgress)]
+    [TestCase(OrderStatus.Completed, OrderStatus.Created)]
+    public async Task UpdateOrderStatusAsync_UpdatesOrderStatus_WhenStatusIsDifferent(string currentStatus, string newStatus)
     {
         // Arrange
         var orderId = await AddOrderAsync(1, currentStatus);
@@ -267,23 +357,39 @@ public class OrderServiceTests
         Assert.That(order!.StatusName, Is.EqualTo(newStatus));
     }
 
-    // The full transition matrix is covered by the domain tests; these check how a rejected transition is reported.
-    [TestCase(OrderStatus.Created, OrderStatus.Completed)]
-    [TestCase(OrderStatus.Completed, OrderStatus.Failed)]
-    [TestCase(OrderStatus.Failed, OrderStatus.Failed)]
-    public async Task UpdateOrderStatusAsync_ThrowsValidationExceptionAndKeepsStatus_WhenTransitionIsNotAllowed(string currentStatus, string newStatus)
+    [TestCase(OrderStatus.Created, "Created")]
+    [TestCase(OrderStatus.InProgress, "inprogress")]
+    [TestCase(OrderStatus.Failed, "FAILED")]
+    public async Task UpdateOrderStatusAsync_ThrowsConflictExceptionAndKeepsOrder_WhenStatusIsUnchanged(string currentStatus, string requestedStatus)
     {
         // Arrange
         var orderId = await AddOrderAsync(1, currentStatus);
+        var before = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
 
         // Act
-        var exception = await Assert.ThrowsAsync<ValidationException>(() => _orderService.UpdateOrderStatusAsync(orderId, newStatus, CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<ConflictException>(() => _orderService.UpdateOrderStatusAsync(orderId, requestedStatus, CancellationToken.None));
+
+        // Assert
+        var after = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
+        Assert.That(exception!.Message, Is.EqualTo($"Order status is already '{currentStatus}'."));
+        Assert.That(after!.StatusName, Is.EqualTo(currentStatus));
+        Assert.That(after.Version, Is.EqualTo(before!.Version));
+    }
+
+    [Test]
+    public async Task UpdateOrderStatusAsync_ClearsCompletedDateAndRemovesProfit_WhenOrderLeavesCompleted()
+    {
+        // Arrange
+        var orderId = await AddOrderAsync(1, OrderStatus.Completed, completedDate: new DateTime(2019, 3, 2));
+
+        // Act
+        await _orderService.UpdateOrderStatusAsync(orderId, "InProgress", CancellationToken.None);
 
         // Assert
         var order = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
-        Assert.That(exception!.Errors.Keys, Is.EquivalentTo(new[] { "Status" }));
-        Assert.That(exception.Errors["Status"].Single(), Does.StartWith($"Order status cannot be changed from '{currentStatus}' to '{newStatus}'."));
-        Assert.That(order!.StatusName, Is.EqualTo(currentStatus));
+        var profits = await _orderService.GetMonthlyProfitAsync(CancellationToken.None);
+        Assert.That(order!.CompletedDate, Is.Null);
+        Assert.That(profits, Is.Empty);
     }
 
     [Test]
@@ -311,7 +417,7 @@ public class OrderServiceTests
 
         // Assert
         var order = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
-        var summary = (await _orderService.GetOrdersByStatusAsync("Completed", CancellationToken.None)).Single();
+        var summary = ((await _orderService.GetOrdersByStatusAsync("Completed", 1, OrderLimits.MaxPageSize, CancellationToken.None)).Items).Single();
         Assert.That(order!.CompletedDate, Is.EqualTo(_timeProvider.UtcNow));
         Assert.That(summary.CompletedDate, Is.EqualTo(_timeProvider.UtcNow));
     }
@@ -348,7 +454,7 @@ public class OrderServiceTests
 
     // Two requests race: A loads the order, B changes and saves it first, then A saves its change.
     [Test]
-    public async Task SaveChangesAsync_ThrowsConcurrencyConflictException_WhenOrderWasChangedByAnotherRequest()
+    public async Task SaveChangesAsync_ThrowsConflictException_WhenOrderWasChangedByAnotherRequest()
     {
         // Arrange
         var orderId = await AddOrderAsync(1);
@@ -363,7 +469,7 @@ public class OrderServiceTests
         staleOrder!.ChangeStatus(statuses.Single(x => x.Is(OrderStatus.InProgress)), Now);
 
         // Act & Assert
-        await Assert.ThrowsAsync<ConcurrencyConflictException>(() => requestARepository.SaveChangesAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<ConflictException>(() => requestARepository.SaveChangesAsync(CancellationToken.None));
 
         var order = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
         Assert.That(order!.Version, Is.EqualTo(1));
@@ -464,7 +570,7 @@ public class OrderServiceTests
         var order = await _orderService.CreateOrderAsync(CreateValidOrderRequest(), CancellationToken.None);
 
         // Assert
-        var orders = await _orderService.GetOrdersAsync(CancellationToken.None);
+        var orders = (await _orderService.GetOrdersAsync(1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
         Assert.That(orders.Single().Id, Is.EqualTo(order.Id));
     }
 
@@ -478,7 +584,7 @@ public class OrderServiceTests
         await Assert.ThrowsAsync<ValidationException>(() => _orderService.CreateOrderAsync(request, CancellationToken.None));
 
         // Assert
-        var orders = await _orderService.GetOrdersAsync(CancellationToken.None);
+        var orders = (await _orderService.GetOrdersAsync(1, OrderLimits.MaxPageSize, CancellationToken.None)).Items;
         Assert.That(orders, Is.Empty);
     }
 
@@ -673,16 +779,16 @@ public class OrderServiceTests
         new(Guid.NewGuid(), Guid.NewGuid(), [new CreateOrderItemRequest(_mailboxProduct.Id, quantity)]);
 
     /// <summary>
-    /// Adds an order through the domain model, walking the workflow to reach <paramref name="status"/>.
-    /// Status changes happen at <paramref name="completedDate"/>, falling back to the creation date.
+    /// Adds an order through the domain model in <paramref name="status"/>. The status change happens at
+    /// <paramref name="completedDate"/>, falling back to the creation date.
     /// </summary>
     private async Task<Guid> AddOrderAsync(int quantity, string status = OrderStatus.Created, DateTime? createdDate = null, DateTime? completedDate = null)
     {
         var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, quantity)], createdDate ?? Now);
 
-        foreach (var nextStatus in GetWorkflowPathTo(status))
+        if (status != OrderStatus.Created)
         {
-            order.ChangeStatus(GetStatus(nextStatus), completedDate ?? createdDate ?? Now);
+            order.ChangeStatus(GetStatus(status), completedDate ?? createdDate ?? Now);
         }
 
         _dbContext.Orders.Add(order);
@@ -690,15 +796,6 @@ public class OrderServiceTests
 
         return order.Id;
     }
-
-    private static string[] GetWorkflowPathTo(string status) => status switch
-    {
-        OrderStatus.Created => [],
-        OrderStatus.InProgress => [OrderStatus.InProgress],
-        OrderStatus.Completed => [OrderStatus.InProgress, OrderStatus.Completed],
-        OrderStatus.Failed => [OrderStatus.InProgress, OrderStatus.Failed],
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, null)
-    };
 
     private OrderStatus GetStatus(string status) => status switch
     {
