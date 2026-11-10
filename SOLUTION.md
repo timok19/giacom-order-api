@@ -11,11 +11,14 @@ docker compose up --build
 ```
 
 - Swagger UI: http://localhost:8000/swagger (OpenAPI document: http://localhost:8000/openapi/v1.json)
-- Ready-made requests: [src/Orders.WebApi/Orders.WebApi.http](src/Orders.WebApi/Orders.WebApi.http)
-- Tests: `dotnet test src/Orders.sln`
+- Ready-made requests: [src/Giacom.Orders.WebApi/Giacom.Orders.WebApi.http](src/Giacom.Orders.WebApi/Giacom.Orders.WebApi.http)
+- Tests: `dotnet test Giacom.Orders.sln`
 
 Running locally needs the **.NET 10 SDK** (see "Upgrade to .NET 10" below): start the database with
-`docker compose up db`, then run `Orders.WebApi`.
+`docker compose up db`, then run `Giacom.Orders.WebApi`.
+
+The solution file `Giacom.Orders.sln` is at the repository root (the README's setup step still says `/src`).
+Production code is under `src/` and tests under `tests/`; the solution shows them as `src` and `tests` folders.
 
 ## Endpoints
 
@@ -49,18 +52,18 @@ Errors are RFC 7807 problem details.
 Clean Architecture; dependencies point inwards:
 
 ```
-Orders.WebApi ──> Orders.Infrastructure ──> Orders.Application ──> Orders.Domain
-      └──────────────────────────────────────────┘
+Giacom.Orders.WebApi ──> Giacom.Orders.Infrastructure ──> Giacom.Orders.Application ──> Giacom.Orders.Domain
+        └─────────────────────────────────────────────────────────┘
 ```
 
 | Project | Contains |
 |---|---|
-| `Orders.Domain` | `Order` aggregate (`Create`, `ChangeStatus`, version, completion date), `OrderStatusWorkflow`, reference data entities. No dependencies. |
-| `Orders.Application` | `IOrderService` use cases, `IOrderRepository` port, record DTOs, `ValidationException`, `ConcurrencyConflictException`. |
-| `Orders.Infrastructure` | EF Core `OrdersDbContext` mapping onto the existing MySQL schema (`binary(16)` ids in .NET `Guid` byte order, so ids are unchanged) and the repository. |
-| `Orders.WebApi` | Controllers, `ApiExceptionHandler` (exceptions to problem details), OpenAPI and Swagger UI. |
-| `Orders.Domain.Tests` | Workflow and invariants, no database. |
-| `Orders.Application.Tests` | Use cases running against the real repository on in-memory SQLite. |
+| `src/Giacom.Orders.Domain` | `Order` aggregate (`Create`, `ChangeStatus`, version, completion date), `OrderStatusWorkflow`, reference data entities. No dependencies. |
+| `src/Giacom.Orders.Application` | `IOrderService` use cases, `IOrderRepository` port, record DTOs, `ValidationException`, `ConcurrencyConflictException`. |
+| `src/Giacom.Orders.Infrastructure` | EF Core `OrdersDbContext` mapping onto the existing MySQL schema (`binary(16)` ids in .NET `Guid` byte order, so ids are unchanged) and the repository. |
+| `src/Giacom.Orders.WebApi` | Controllers, `ApiExceptionHandler` (exceptions to problem details), OpenAPI and Swagger UI. |
+| `tests/Giacom.Orders.Domain.Tests` | Workflow and invariants, no database. |
+| `tests/Giacom.Orders.Application.Tests` | Use cases running against the real repository on in-memory SQLite. |
 
 The schema stays owned by `mysql-init.sql` (no EF migrations), as in the original project.
 
