@@ -3,6 +3,13 @@
 Solution to the Giacom Order API tech test described in [README.md](README.md). Giacom's original commits are kept in
 the history; each later commit is one change made for this submission.
 
+## Time spent
+
+About 2 hours went on the brief itself: tasks 1 to 4 and the two Docker fixes needed to run them. About 2 more hours
+went on optional work done afterwards: Clean Architecture, the .NET 10 upgrade, Swagger, concurrency and completion
+date handling, paging, logging, the extra tests and the Alpine image. Each change is a separate branch merged into
+`main`; the core tasks are the `feature/order-endpoints` and `fix/docker-compose-apple-silicon-and-tls` merges.
+
 ## Running
 
 ```bash
