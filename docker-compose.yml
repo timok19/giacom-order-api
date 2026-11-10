@@ -5,7 +5,8 @@ services:
       ports:
           - 8000:8080
       depends_on:
-        - db
+        db:
+          condition: service_healthy
       links:
         - "db:database"
   db:
@@ -19,4 +20,11 @@ services:
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --lower_case_table_names=1
     ports:
       - 3306:3306
+    healthcheck:
+      # TCP only answers once mysql-init.sql has run: the entrypoint's temporary init server has networking disabled.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
       

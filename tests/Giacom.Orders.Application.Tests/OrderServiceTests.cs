@@ -317,6 +317,21 @@ public class OrderServiceTests
     }
 
     [Test]
+    public async Task UpdateOrderStatusAsync_TruncatesCompletedDateToWholeSeconds()
+    {
+        // Arrange: 23:59:59.6 on the last day of November must stay in November.
+        var orderId = await AddOrderAsync(1, OrderStatus.InProgress);
+        _timeProvider.UtcNow = new DateTimeOffset(2026, 11, 30, 23, 59, 59, 600, TimeSpan.Zero);
+
+        // Act
+        await _orderService.UpdateOrderStatusAsync(orderId, "Completed", CancellationToken.None);
+
+        // Assert
+        var order = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
+        Assert.That(order!.CompletedDate, Is.EqualTo(new DateTimeOffset(2026, 11, 30, 23, 59, 59, TimeSpan.Zero)));
+    }
+
+    [Test]
     public async Task UpdateOrderStatusAsync_IncrementsVersion()
     {
         // Arrange

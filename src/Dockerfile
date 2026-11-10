@@ -1,10 +1,12 @@
 #See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+# Alpine images keep the runtime image small; the app runs as the image's non-root user.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS base
+USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
 WORKDIR /src
 COPY ["Directory.Build.props", "."]
 COPY ["Giacom.Orders.WebApi/Giacom.Orders.WebApi.csproj", "Giacom.Orders.WebApi/"]
@@ -17,7 +19,7 @@ WORKDIR "/src/Giacom.Orders.WebApi"
 RUN dotnet build "Giacom.Orders.WebApi.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "Giacom.Orders.WebApi.csproj" -c Release -o /app/publish
+RUN dotnet publish "Giacom.Orders.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app

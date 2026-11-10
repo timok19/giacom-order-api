@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.14" />
+    <!-- Pinned: MySql.EntityFrameworkCore would otherwise bring in Relational 10.0.12. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="MySql.EntityFrameworkCore" Version="10.0.12" />
   </ItemGroup>
 

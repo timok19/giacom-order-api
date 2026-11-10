@@ -11,6 +11,7 @@ public static class DependencyInjection
     {
         services.AddDbContext<OrdersDbContext>(options => options.UseMySQL(connectionString));
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddHealthChecks().AddDbContextCheck<OrdersDbContext>();
 
         return services;
     }
