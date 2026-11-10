@@ -25,6 +25,11 @@ public sealed class Order
 
     public DateTime CreatedDate { get; private set; }
 
+    /// <summary>
+    /// Incremented on every change; used as an optimistic concurrency token so concurrent updates cannot overwrite each other.
+    /// </summary>
+    public int Version { get; private set; }
+
     public IReadOnlyCollection<OrderItem> Items => _items.AsReadOnly();
 
     /// <summary>
@@ -89,5 +94,6 @@ public sealed class Order
 
         StatusId = newStatus.Id;
         Status = newStatus;
+        Version++;
     }
 }

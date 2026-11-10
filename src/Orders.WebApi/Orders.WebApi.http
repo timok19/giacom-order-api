@@ -24,6 +24,7 @@ GET {{baseUrl}}/orders/status/Shipped
 
 ### Task 2: Update order status -> 204
 # Workflow is forward-only: Created -> In Progress -> Completed | Failed (Completed and Failed are final).
+# Each change increments the order's version; a concurrent change of the same order returns 409 Conflict.
 PATCH {{baseUrl}}/orders/{{orderId}}/status
 Content-Type: application/json
 

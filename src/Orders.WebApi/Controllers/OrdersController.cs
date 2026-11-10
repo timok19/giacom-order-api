@@ -47,6 +47,7 @@ public sealed class OrdersController(IOrderService orderService) : ControllerBas
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> UpdateOrderStatus(Guid orderId, UpdateOrderStatusRequest request, CancellationToken cancellationToken)
     {
         var updated = await orderService.UpdateOrderStatusAsync(orderId, request.Status, cancellationToken);

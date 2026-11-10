@@ -18,6 +18,12 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsS
             {
                 Status = StatusCodes.Status400BadRequest
             },
+            ConcurrencyConflictException concurrencyException => new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Conflict",
+                Detail = concurrencyException.Message
+            },
             _ => null
         };
 

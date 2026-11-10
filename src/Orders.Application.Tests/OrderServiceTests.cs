@@ -299,6 +299,44 @@ public class OrderServiceTests
         Assert.That(updated, Is.False);
     }
 
+    [Test]
+    public async Task UpdateOrderStatusAsync_IncrementsVersion()
+    {
+        // Arrange
+        var orderId = await AddOrderAsync(1);
+
+        // Act
+        await _orderService.UpdateOrderStatusAsync(orderId, "InProgress", CancellationToken.None);
+        await _orderService.UpdateOrderStatusAsync(orderId, "Completed", CancellationToken.None);
+
+        // Assert
+        var order = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
+        Assert.That(order!.Version, Is.EqualTo(2));
+    }
+
+    // Two requests race: A loads the order, B changes and saves it first, then A saves its change.
+    [Test]
+    public async Task SaveChangesAsync_ThrowsConcurrencyConflictException_WhenOrderWasChangedByAnotherRequest()
+    {
+        // Arrange
+        var orderId = await AddOrderAsync(1);
+
+        await using var requestADbContext = CreateDbContext();
+        var requestARepository = new OrderRepository(requestADbContext);
+        var statuses = await requestARepository.GetOrderStatusesAsync(CancellationToken.None);
+        var staleOrder = await requestARepository.GetOrderAsync(orderId, CancellationToken.None);
+
+        await _orderService.UpdateOrderStatusAsync(orderId, "InProgress", CancellationToken.None);
+
+        staleOrder!.ChangeStatus(statuses.Single(x => x.Is(OrderStatus.InProgress)));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(() => requestARepository.SaveChangesAsync(CancellationToken.None));
+
+        var order = await _orderService.GetOrderByIdAsync(orderId, CancellationToken.None);
+        Assert.That(order!.Version, Is.EqualTo(1));
+    }
+
     [TestCase("Shipped")]
     [TestCase("")]
     [TestCase(null)]

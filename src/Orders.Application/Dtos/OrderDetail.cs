@@ -10,6 +10,7 @@ public sealed record OrderDetail(
     Guid StatusId,
     string StatusName,
     DateTimeOffset CreatedDate,
+    int Version,
     decimal TotalCost,
     decimal TotalPrice,
     IReadOnlyList<OrderItemDetail> Items);
