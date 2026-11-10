@@ -15,7 +15,7 @@ The API starts once MySQL has finished seeding, which takes under a minute.
 - Swagger UI: http://localhost:8000/swagger (OpenAPI document at `/openapi/v1.json`)
 - Health check: http://localhost:8000/health
 - Sample requests: [src/Giacom.Orders.WebApi/Giacom.Orders.WebApi.http](src/Giacom.Orders.WebApi/Giacom.Orders.WebApi.http)
-- Tests: `dotnet test Giacom.Orders.sln`
+- Tests: `dotnet test Giacom.Orders.slnx`
 
 Building outside Docker needs the .NET 10 SDK, not .NET 8 as the README states. The solution file is at the repository
 root rather than in `/src`; production code is under `src/` and tests are under `tests/`.

@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="docker-compose.yml" />
+    <File Path="mysql-init.sql" />
+    <File Path="README.md" />
+    <File Path="SOLUTION.md" />
+    <File Path="src/.dockerignore" />
+    <File Path="src/Dockerfile" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Giacom.Orders.Application/Giacom.Orders.Application.csproj" />
+    <Project Path="src/Giacom.Orders.Domain/Giacom.Orders.Domain.csproj" />
+    <Project Path="src/Giacom.Orders.Infrastructure/Giacom.Orders.Infrastructure.csproj" />
+    <Project Path="src/Giacom.Orders.WebApi/Giacom.Orders.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Giacom.Orders.Application.Tests/Giacom.Orders.Application.Tests.csproj" />
+    <Project Path="tests/Giacom.Orders.Domain.Tests/Giacom.Orders.Domain.Tests.csproj" />
+    <Project Path="tests/Giacom.Orders.WebApi.Tests/Giacom.Orders.WebApi.Tests.csproj" />
+  </Folder>
+</Solution>
