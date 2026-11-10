@@ -69,7 +69,7 @@ public sealed class OrdersController(IOrderService orderService) : ControllerBas
         return CreatedAtAction(nameof(GetOrderById), new { orderId = order.Id }, order);
     }
 
-    /// <summary>Returns the profit of completed orders per month, oldest first.</summary>
+    /// <summary>Returns the profit of completed orders per month of completion (UTC), oldest first.</summary>
     [HttpGet("profit/monthly")]
     [ProducesResponseType<IReadOnlyList<MonthlyProfit>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<MonthlyProfit>>> GetMonthlyProfit(CancellationToken cancellationToken)

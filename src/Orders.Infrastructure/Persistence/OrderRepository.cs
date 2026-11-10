@@ -26,6 +26,7 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
                 x.StatusId,
                 x.Status.Name,
                 AsUtc(x.CreatedDate),
+                AsUtc(x.CompletedDate),
                 x.Items.Count,
                 x.Items.Sum(i => i.Quantity * i.Product.UnitCost),
                 x.Items.Sum(i => i.Quantity * i.Product.UnitPrice)))
@@ -44,6 +45,7 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
                 x.StatusId,
                 x.Status.Name,
                 AsUtc(x.CreatedDate),
+                AsUtc(x.CompletedDate),
                 x.Version,
                 x.Items.Sum(i => i.Quantity * i.Product.UnitCost),
                 x.Items.Sum(i => i.Quantity * i.Product.UnitPrice),
@@ -68,11 +70,11 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
     {
         return await dbContext.Orders
             .AsNoTracking()
-            .Where(x => x.StatusId == statusId)
+            .Where(x => x.StatusId == statusId && x.CompletedDate != null)
             .SelectMany(x => x.Items, (order, item) => new
             {
-                order.CreatedDate.Year,
-                order.CreatedDate.Month,
+                order.CompletedDate!.Value.Year,
+                order.CompletedDate.Value.Month,
                 Profit = item.Quantity * (item.Product.UnitPrice - item.Product.UnitCost)
             })
             .GroupBy(x => new { x.Year, x.Month })
@@ -121,4 +123,6 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
 
     // The datetime columns hold UTC values without an offset.
     private static DateTimeOffset AsUtc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+    private static DateTimeOffset? AsUtc(DateTime? value) => value is null ? null : AsUtc(value.Value);
 }

@@ -10,6 +10,7 @@ public sealed record OrderSummary(
     Guid StatusId,
     string StatusName,
     DateTimeOffset CreatedDate,
+    DateTimeOffset? CompletedDate,
     int ItemCount,
     decimal TotalCost,
     decimal TotalPrice);

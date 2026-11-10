@@ -14,7 +14,7 @@ public interface IOrderRepository
 
     Task<OrderDetail?> GetOrderDetailAsync(Guid orderId, CancellationToken cancellationToken);
 
-    /// <summary>Profit per calendar month of orders in the given status, oldest month first.</summary>
+    /// <summary>Profit per calendar month of completion of the orders in the given status, oldest month first.</summary>
     Task<IReadOnlyList<MonthlyProfit>> GetMonthlyProfitAsync(Guid statusId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<OrderStatus>> GetOrderStatusesAsync(CancellationToken cancellationToken);

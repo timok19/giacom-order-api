@@ -32,7 +32,7 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
 
         try
         {
-            order.ChangeStatus(newStatus);
+            order.ChangeStatus(newStatus, timeProvider.GetUtcNow().UtcDateTime);
         }
         catch (OrderStatusTransitionException exception)
         {

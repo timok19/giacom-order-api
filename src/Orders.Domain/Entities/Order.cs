@@ -26,6 +26,11 @@ public sealed class Order
     public DateTime CreatedDate { get; private set; }
 
     /// <summary>
+    /// When the order moved to <see cref="OrderStatus.Completed"/>; null until then.
+    /// </summary>
+    public DateTime? CompletedDate { get; private set; }
+
+    /// <summary>
     /// Incremented on every change; used as an optimistic concurrency token so concurrent updates cannot overwrite each other.
     /// </summary>
     public int Version { get; private set; }
@@ -82,10 +87,11 @@ public sealed class Order
     }
 
     /// <summary>
-    /// Moves the order to <paramref name="newStatus"/> if <see cref="OrderStatusWorkflow"/> allows it.
+    /// Moves the order to <paramref name="newStatus"/> if <see cref="OrderStatusWorkflow"/> allows it,
+    /// recording <paramref name="changedAt"/> as the completion date when the order is completed.
     /// </summary>
     /// <exception cref="OrderStatusTransitionException">The workflow does not allow the transition.</exception>
-    public void ChangeStatus(OrderStatus newStatus)
+    public void ChangeStatus(OrderStatus newStatus, DateTime changedAt)
     {
         if (!OrderStatusWorkflow.CanTransition(Status.Name, newStatus.Name))
         {
@@ -95,5 +101,10 @@ public sealed class Order
         StatusId = newStatus.Id;
         Status = newStatus;
         Version++;
+
+        if (newStatus.Is(OrderStatus.Completed))
+        {
+            CompletedDate = changedAt;
+        }
     }
 }

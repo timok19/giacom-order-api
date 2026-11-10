@@ -6,6 +6,7 @@ namespace Orders.Domain.Tests;
 public class OrderTests
 {
     private static readonly DateTime CreatedDate = new(2026, 11, 9, 10, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime ChangedAt = new(2026, 11, 10, 8, 0, 0, DateTimeKind.Utc);
 
     private readonly OrderStatus _createdStatus = new(Guid.NewGuid(), OrderStatus.Created);
     private readonly OrderStatus _inProgressStatus = new(Guid.NewGuid(), OrderStatus.InProgress);
@@ -97,7 +98,7 @@ public class OrderTests
         var order = CreateOrderInStatus(currentStatus);
 
         // Act
-        order.ChangeStatus(GetStatus(newStatus));
+        order.ChangeStatus(GetStatus(newStatus), ChangedAt);
 
         // Assert
         Assert.That(order.Status.Name, Is.EqualTo(newStatus));
@@ -123,7 +124,7 @@ public class OrderTests
         var order = CreateOrderInStatus(currentStatus);
 
         // Act
-        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(GetStatus(newStatus)));
+        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(GetStatus(newStatus), ChangedAt));
 
         // Assert
         Assert.That(exception!.Message, Does.Contain($"from '{currentStatus}' to '{newStatus}'"));
@@ -137,7 +138,7 @@ public class OrderTests
         var order = CreateOrderInStatus(OrderStatus.Created);
 
         // Act
-        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_completedStatus));
+        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_completedStatus, ChangedAt));
 
         // Assert
         Assert.That(exception!.Message, Does.EndWith("Allowed next statuses: In Progress."));
@@ -150,7 +151,7 @@ public class OrderTests
         var order = CreateOrderInStatus(OrderStatus.Completed);
 
         // Act
-        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_failedStatus));
+        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_failedStatus, ChangedAt));
 
         // Assert
         Assert.That(exception!.Message, Does.EndWith("'Completed' is a final status."));
@@ -173,8 +174,8 @@ public class OrderTests
         var order = CreateOrderInStatus(OrderStatus.Created);
 
         // Act
-        order.ChangeStatus(_inProgressStatus);
-        order.ChangeStatus(_completedStatus);
+        order.ChangeStatus(_inProgressStatus, ChangedAt);
+        order.ChangeStatus(_completedStatus, ChangedAt);
 
         // Assert
         Assert.That(order.Version, Is.EqualTo(2));
@@ -187,10 +188,44 @@ public class OrderTests
         var order = CreateOrderInStatus(OrderStatus.Created);
 
         // Act
-        Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_failedStatus));
+        Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_failedStatus, ChangedAt));
 
         // Assert
         Assert.That(order.Version, Is.Zero);
+    }
+
+    [Test]
+    public void Create_HasNoCompletedDate()
+    {
+        // Act
+        var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, 1)], CreatedDate);
+
+        // Assert
+        Assert.That(order.CompletedDate, Is.Null);
+    }
+
+    [Test]
+    public void ChangeStatus_SetsCompletedDate_WhenOrderIsCompleted()
+    {
+        // Arrange
+        var order = CreateOrderInStatus(OrderStatus.InProgress);
+
+        // Act
+        order.ChangeStatus(_completedStatus, ChangedAt);
+
+        // Assert
+        Assert.That(order.CompletedDate, Is.EqualTo(ChangedAt));
+    }
+
+    [TestCase(OrderStatus.InProgress)]
+    [TestCase(OrderStatus.Failed)]
+    public void ChangeStatus_DoesNotSetCompletedDate_WhenOrderIsNotCompleted(string status)
+    {
+        // Act
+        var order = CreateOrderInStatus(status);
+
+        // Assert
+        Assert.That(order.CompletedDate, Is.Null);
     }
 
     private Order CreateOrderInStatus(string status)
@@ -199,7 +234,7 @@ public class OrderTests
 
         foreach (var nextStatus in GetWorkflowPathTo(status))
         {
-            order.ChangeStatus(GetStatus(nextStatus));
+            order.ChangeStatus(GetStatus(nextStatus), ChangedAt);
         }
 
         return order;
