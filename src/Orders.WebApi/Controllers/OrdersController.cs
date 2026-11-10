@@ -42,7 +42,7 @@ public sealed class OrdersController(IOrderService orderService) : ControllerBas
         return Ok(orders);
     }
 
-    /// <summary>Changes an order's status. Workflow: Created -> In Progress -> Completed | Failed.</summary>
+    /// <summary>Changes an order's status. Allowed: Created to In Progress, then In Progress to Completed or Failed.</summary>
     [HttpPatch("{orderId}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest)]
