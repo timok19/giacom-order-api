@@ -9,6 +9,8 @@ About 2 hours went on the brief itself: tasks 1 to 4 and the two Docker fixes ne
 went on optional work done afterwards: Clean Architecture, the .NET 10 upgrade, Swagger, concurrency and completion
 date handling, paging, logging, the extra tests and the Alpine image. Each change is a separate branch merged into
 `main`; the core tasks are the `feature/order-endpoints` and `fix/docker-compose-apple-silicon-and-tls` merges.
+Most XML doc comments were written with the optional work; the core-task commit has only a few, on the validation
+exception, the error filter and helper methods.
 
 ## Running
 
