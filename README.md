@@ -19,8 +19,8 @@ Giacom Cloud Market is a B2B e-commerce platform which allows IT companies (rese
 You should allocate approx. 2 hours to complete the tech test though it will likely take less time for more experienced engineers.
 
 ## Pre-Reqs
-* Visual Studio 2022 (or compatible IDE for working with .net)
-* .NET 8.0 SDK
+* Visual Studio 2022 17.13+ or Rider 2024.3+ (or another IDE that opens .slnx solutions)
+* .NET 10 SDK
 * Git
 * Docker (running Linux containers)
 * Optional: MySQL Workbench / Heidi (database client)
@@ -29,8 +29,8 @@ You should allocate approx. 2 hours to complete the tech test though it will lik
 ## Setup
 1. Clone this repository locally
 2. Using a terminal, cd to the local repository and run 'docker-compose up db', which will start and seed the database
-3. Open the solution file in /src
-4. Start debugging or run the Order.WebAPI project then query http://localhost:8000/orders in your API client / browser to test that setup is complete. You should see orders being returned from the API
+3. Open the solution file Giacom.Orders.slnx in the repository root
+4. Start debugging or run the Giacom.Orders.WebApi project then query http://localhost:8000/orders in your API client / browser to test that setup is complete. You should see orders being returned from the API
    
 ## Tasks
 Add a new API endpoint for each of the following tasks:
