@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS `order_item` (
   `OrderId` binary(16) NOT NULL,
   `ProductId` binary(16) NOT NULL,
   `ServiceId` binary(16) NOT NULL,
-  `Quantity` int(11) DEFAULT NULL,
+  `Quantity` int(11) NOT NULL,
   PRIMARY KEY (`Id`),
   KEY `OrderId` (`OrderId`),
   KEY `ProductId` (`ProductId`),

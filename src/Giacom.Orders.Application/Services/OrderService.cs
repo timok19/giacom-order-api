@@ -32,7 +32,7 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
 
         try
         {
-            order.ChangeStatus(newStatus, timeProvider.GetUtcNow().UtcDateTime);
+            order.ChangeStatus(newStatus, GetUtcNow());
         }
         catch (OrderStatusTransitionException exception)
         {
@@ -53,7 +53,7 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
             request.CustomerId,
             createdStatus,
             request.Items!.Select(item => (products[item!.ProductId], item.Quantity)),
-            timeProvider.GetUtcNow().UtcDateTime);
+            GetUtcNow());
 
         orderRepository.AddOrder(order);
         await orderRepository.SaveChangesAsync(cancellationToken);
@@ -66,6 +66,16 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
     {
         var completedStatus = await GetConfiguredOrderStatusAsync(OrderStatus.Completed, cancellationToken);
         return await orderRepository.GetMonthlyProfitAsync(completedStatus.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// The current UTC time truncated to whole seconds. MySQL datetime columns have no fractional seconds and round
+    /// them, which would move e.g. 23:59:59.6 on the last day of a month into the next month.
+    /// </summary>
+    private DateTime GetUtcNow()
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
     }
 
     /// <summary>
