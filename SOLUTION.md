@@ -1,16 +1,16 @@
 # Solution notes
 
 Solution to the Giacom Order API tech test described in [README.md](README.md). Giacom's original commits are kept in
-the history; each later commit is one change made for this submission.
+the history; each later change is a separate branch merged into `main`.
 
 ## Time spent
 
 About 2 hours went on the brief itself: tasks 1 to 4 and the two Docker fixes needed to run them. About 2 more hours
 went on optional work done afterwards: Clean Architecture, the .NET 10 upgrade, Swagger, concurrency and completion
-date handling, paging, logging, the extra tests and the Alpine image. Each change is a separate branch merged into
-`main`; the core tasks are the `feature/order-endpoints` and `fix/docker-compose-apple-silicon-and-tls` merges.
-Most XML doc comments were written with the optional work; the core-task commit has only a few, on the validation
-exception, the error filter and helper methods.
+date handling, paging, logging, the extra tests and the Alpine image. The core tasks arrived in the
+`feature/order-endpoints` and `fix/docker-compose-apple-silicon-and-tls` merges; later merges changed their behaviour
+(status rule, paging, completion date). Most XML doc comments were written with the optional work; the core-task
+commit has only a few, on the validation exception, the error filter and helper methods.
 
 ## Running
 
@@ -38,9 +38,9 @@ production code is under `src/` and tests are under `tests/`.
 | 3. Create order | `POST /orders`, body `{"resellerId", "customerId", "items": [{"productId", "quantity"}]}` | 201 with `Location` | 400 listing every validation error |
 | 4. Profit by month | `GET /orders/profit/monthly` | 200, `[{"year", "month", "profit"}]` | |
 
-`GET /orders` is paged the same way as task 1. Lists return `{"items", "page", "pageSize", "totalCount"}`, newest first,
-50 per page by default and at most 100. Product ids for creating an order appear in the items of `GET /orders/{orderId}`.
-Errors are RFC 7807 problem details.
+`GET /orders` is paged the same way as task 1, so it now returns `{"items", "page", "pageSize", "totalCount"}` instead
+of the original plain array. Lists are newest first, 50 per page by default and at most 100. Product ids for new
+orders appear in the items of `GET /orders/{orderId}`. Errors are RFC 7807 problem details.
 
 ## Assumptions and decisions
 
@@ -56,7 +56,8 @@ items, every product must exist and every quantity must be between 1 and 10,000.
 
 Profit is price minus cost, summed over the items of completed orders and grouped by the UTC month in which each order
 was completed. A new nullable `CompletedDate` column records that moment; it is cleared if the order leaves Completed.
-Seeded orders have no completion time, so the seed script uses the creation date for those already completed.
+Seeded orders have no completion time, so the seed script uses the creation date for those already completed. Months
+without completed orders are not listed.
 
 A new `Version` column is an optimistic concurrency token. When two requests update the same order at once, one
 succeeds and the other receives 409 instead of overwriting the first change.
@@ -66,28 +67,28 @@ creation, status changes and conflicts are logged.
 
 ## Architecture
 
-A single deployable Web API with one MySQL database, layered along Clean Architecture lines. Dependencies point
-inwards:
+One Web API and one MySQL database, layered along Clean Architecture lines; dependencies point inwards:
 
 ```
-Giacom.Orders.WebApi -> Giacom.Orders.Infrastructure -> Giacom.Orders.Application -> Giacom.Orders.Domain
+Giacom.Orders.WebApi -> Giacom.Orders.Application, Giacom.Orders.Infrastructure
+Giacom.Orders.Infrastructure -> Giacom.Orders.Application -> Giacom.Orders.Domain
 ```
 
 | Project | Responsibility |
 |---|---|
-| `src/Giacom.Orders.Domain` | `Order` aggregate (status changes, version, completion date) and reference data entities. No dependencies. |
-| `src/Giacom.Orders.Application` | Use cases (`IOrderService`), the `IOrderRepository` port, request and response records, validation and limits. |
-| `src/Giacom.Orders.Infrastructure` | EF Core mapping onto the existing MySQL schema, and the repository. Ids stay `binary(16)` in .NET `Guid` byte order, so existing ids are unchanged. |
-| `src/Giacom.Orders.WebApi` | Controllers, mapping of exceptions to problem details, health check, OpenAPI and Swagger UI. |
-| `tests/Giacom.Orders.Domain.Tests` | Order rules, without a database. |
+| `src/Giacom.Orders.Domain` | `Order` aggregate (status, version, completion date) and reference data. No dependencies. |
+| `src/Giacom.Orders.Application` | Use cases, the repository port, request and response records, validation and limits. |
+| `src/Giacom.Orders.Infrastructure` | EF Core mapping onto the existing schema (ids stay `binary(16)` in .NET `Guid` byte order) and the repository. |
+| `src/Giacom.Orders.WebApi` | Controllers, problem details, health check, OpenAPI and Swagger UI. |
+| `tests/Giacom.Orders.Domain.Tests` | Order rules, no database. |
 | `tests/Giacom.Orders.Application.Tests` | Use cases against the real repository on in-memory SQLite. |
-| `tests/Giacom.Orders.WebApi.Tests` | The HTTP pipeline (routes, status codes, headers, problem details) through `WebApplicationFactory`. |
+| `tests/Giacom.Orders.WebApi.Tests` | Routes, status codes, headers and problem details through `WebApplicationFactory`. |
 
 `mysql-init.sql` still owns the schema; there are no EF migrations.
 
-## Changes beyond the brief
+## Upgrade and Docker
 
-.NET 8 reaches end of support on 10 November 2026, and the original packages had known vulnerabilities (one critical
+Support for .NET 8 ended on 10 November 2026, and the original packages had known vulnerabilities (one critical
 and several high, all transitive). The solution now targets .NET 10 LTS with current packages, and
 `dotnet list package --vulnerable --include-transitive` reports none. Nullable warnings fail the build.
 
