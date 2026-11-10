@@ -3,12 +3,15 @@
 # Interactive alternative: Swagger UI at http://localhost:8000/swagger (OpenAPI document: /openapi/v1.json).
 
 # IDs in the seeded database are random per container. Take an order ID from
-# "Get all orders" and a product ID from "Get order by ID", then paste them below.
+# "Get orders" and a product ID from the items of "Get order by ID", then paste them below.
 @orderId = 00000000-0000-0000-0000-000000000000
 @productId = 00000000-0000-0000-0000-000000000000
 
-### Get all orders
-GET {{baseUrl}}/orders
+### Get orders (newest first, 50 per page by default, at most 100)
+GET {{baseUrl}}/orders?page=1&pageSize=20
+
+### Paging outside the limits -> 400
+GET {{baseUrl}}/orders?pageSize=101
 
 ### Get order by ID
 GET {{baseUrl}}/orders/{{orderId}}
@@ -23,7 +26,7 @@ GET {{baseUrl}}/orders/status/InProgress
 GET {{baseUrl}}/orders/status/Shipped
 
 ### Task 2: Update order status -> 204
-# Workflow is forward-only: Created -> In Progress -> Completed | Failed (Completed and Failed are final).
+# Any status can change to any other one. Completing an order records its completion date.
 # Each change increments the order's version; a concurrent change of the same order returns 409 Conflict.
 PATCH {{baseUrl}}/orders/{{orderId}}/status
 Content-Type: application/json
@@ -32,12 +35,12 @@ Content-Type: application/json
   "status": "InProgress"
 }
 
-### Task 2: Transition not allowed by the workflow (e.g. back to Created) -> 400
+### Task 2: Status the order already has (send the previous request twice) -> 409
 PATCH {{baseUrl}}/orders/{{orderId}}/status
 Content-Type: application/json
 
 {
-  "status": "Created"
+  "status": "InProgress"
 }
 
 ### Task 2: Unknown status -> 400
@@ -68,7 +71,7 @@ Content-Type: application/json
   ]
 }
 
-### Task 3: Invalid order -> 400 listing every error
+### Task 3: Invalid order -> 400 listing every error (at most 100 items, quantity 1 to 10000)
 POST {{baseUrl}}/orders
 Content-Type: application/json
 

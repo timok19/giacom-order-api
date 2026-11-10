@@ -26,7 +26,7 @@ public sealed class Order
     public DateTime CreatedDate { get; private set; }
 
     /// <summary>
-    /// When the order moved to <see cref="OrderStatus.Completed"/>; null until then.
+    /// When the order moved to <see cref="OrderStatus.Completed"/>; null while it is not completed.
     /// </summary>
     public DateTime? CompletedDate { get; private set; }
 
@@ -87,24 +87,20 @@ public sealed class Order
     }
 
     /// <summary>
-    /// Moves the order to <paramref name="newStatus"/> if <see cref="OrderStatusWorkflow"/> allows it,
-    /// recording <paramref name="changedAt"/> as the completion date when the order is completed.
+    /// Moves the order to a different status. Completing the order records <paramref name="changedAt"/> as its
+    /// completion date; moving it out of Completed clears that date.
     /// </summary>
-    /// <exception cref="OrderStatusTransitionException">The workflow does not allow the transition.</exception>
+    /// <exception cref="OrderStatusUnchangedException">The order already has <paramref name="newStatus"/>.</exception>
     public void ChangeStatus(OrderStatus newStatus, DateTime changedAt)
     {
-        if (!OrderStatusWorkflow.CanTransition(Status.Name, newStatus.Name))
+        if (newStatus.Id == StatusId)
         {
-            throw new OrderStatusTransitionException(Status.Name, newStatus.Name, OrderStatusWorkflow.GetAllowedNextStatuses(Status.Name));
+            throw new OrderStatusUnchangedException(newStatus.Name);
         }
 
         StatusId = newStatus.Id;
         Status = newStatus;
+        CompletedDate = newStatus.Is(OrderStatus.Completed) ? changedAt : null;
         Version++;
-
-        if (newStatus.Is(OrderStatus.Completed))
-        {
-            CompletedDate = changedAt;
-        }
     }
 }

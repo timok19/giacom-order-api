@@ -8,12 +8,19 @@ namespace Giacom.Orders.WebApi.Controllers;
 [Route("orders")]
 public sealed class OrdersController(IOrderService orderService) : ControllerBase
 {
-    /// <summary>Returns all orders, newest first.</summary>
+    /// <summary>Returns a page of orders, newest first.</summary>
+    /// <param name="page">Page number, starting at 1.</param>
+    /// <param name="pageSize">Orders per page, 1 to 100.</param>
+    /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<OrderSummary>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<OrderSummary>>> GetOrders(CancellationToken cancellationToken)
+    [ProducesResponseType<PagedResult<OrderSummary>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedResult<OrderSummary>>> GetOrders(
+        int page = 1,
+        int pageSize = OrderLimits.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
-        var orders = await orderService.GetOrdersAsync(cancellationToken);
+        var orders = await orderService.GetOrdersAsync(page, pageSize, cancellationToken);
         return Ok(orders);
     }
 
@@ -32,17 +39,25 @@ public sealed class OrdersController(IOrderService orderService) : ControllerBas
         return Ok(order);
     }
 
-    /// <summary>Returns orders with a status, e.g. "Failed" or "InProgress". Matching ignores case, spaces and separators.</summary>
+    /// <summary>Returns a page of orders with a status, e.g. "Failed" or "InProgress", newest first.</summary>
+    /// <param name="status">Status name; matching ignores case, spaces and separators.</param>
+    /// <param name="page">Page number, starting at 1.</param>
+    /// <param name="pageSize">Orders per page, 1 to 100.</param>
+    /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     [HttpGet("status/{status}")]
-    [ProducesResponseType<IReadOnlyList<OrderSummary>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<PagedResult<OrderSummary>>(StatusCodes.Status200OK)]
     [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<IReadOnlyList<OrderSummary>>> GetOrdersByStatus(string status, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<OrderSummary>>> GetOrdersByStatus(
+        string status,
+        int page = 1,
+        int pageSize = OrderLimits.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
-        var orders = await orderService.GetOrdersByStatusAsync(status, cancellationToken);
+        var orders = await orderService.GetOrdersByStatusAsync(status, page, pageSize, cancellationToken);
         return Ok(orders);
     }
 
-    /// <summary>Changes an order's status. Allowed: Created to In Progress, then In Progress to Completed or Failed.</summary>
+    /// <summary>Changes an order's status to a different one. Returns 409 when the order already has that status or was changed concurrently.</summary>
     [HttpPatch("{orderId}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest)]

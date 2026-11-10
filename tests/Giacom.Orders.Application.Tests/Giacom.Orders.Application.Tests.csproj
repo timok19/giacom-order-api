@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Giacom.Orders.Application\Giacom.Orders.Application.csproj" />
     <ProjectReference Include="..\..\src\Giacom.Orders.Infrastructure\Giacom.Orders.Infrastructure.csproj" />
   </ItemGroup>

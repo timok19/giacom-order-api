@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Giacom.Orders.Infrastructure.Persistence;
 
-namespace Giacom.Orders.Application.Tests;
+namespace Giacom.Orders.Tests;
 
 /// <summary>
 /// The production context on SQLite. SQLite has no decimal type and cannot aggregate decimals,

@@ -8,7 +8,11 @@ namespace Giacom.Orders.Infrastructure.Persistence;
 
 public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepository
 {
-    public async Task<IReadOnlyList<OrderSummary>> GetOrderSummariesAsync(Guid? statusId, CancellationToken cancellationToken)
+    public async Task<PagedResult<OrderSummary>> GetOrderSummariesAsync(
+        Guid? statusId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
     {
         var orders = dbContext.Orders.AsNoTracking();
 
@@ -17,8 +21,14 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
             orders = orders.Where(x => x.StatusId == id);
         }
 
-        return await orders
+        var totalCount = await orders.CountAsync(cancellationToken);
+        var skip = (int)Math.Min((long)(page - 1) * pageSize, int.MaxValue);
+
+        var items = await orders
             .OrderByDescending(x => x.CreatedDate)
+            .ThenBy(x => x.Id) // creation dates can repeat; the id keeps pages stable
+            .Skip(skip)
+            .Take(pageSize)
             .Select(x => new OrderSummary(
                 x.Id,
                 x.ResellerId,
@@ -31,6 +41,8 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
                 x.Items.Sum(i => i.Quantity * i.Product.UnitCost),
                 x.Items.Sum(i => i.Quantity * i.Product.UnitPrice)))
             .ToListAsync(cancellationToken);
+
+        return new PagedResult<OrderSummary>(items, page, pageSize, totalCount);
     }
 
     public async Task<OrderDetail?> GetOrderDetailAsync(Guid orderId, CancellationToken cancellationToken)
@@ -117,7 +129,7 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
         }
         catch (DbUpdateConcurrencyException exception)
         {
-            throw new ConcurrencyConflictException("The order was changed by another request. Reload it and try again.", exception);
+            throw new ConflictException("The order was changed by another request. Reload it and try again.", exception);
         }
     }
 

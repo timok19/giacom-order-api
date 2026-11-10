@@ -7,7 +7,9 @@ namespace Giacom.Orders.WebApi.Middleware;
 /// <summary>
 /// Maps application exceptions to RFC 7807 problem details. Anything else falls through to the default 500 handling.
 /// </summary>
-internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsService) : IExceptionHandler
+internal sealed partial class ApiExceptionHandler(
+    IProblemDetailsService problemDetailsService,
+    ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -18,11 +20,11 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsS
             {
                 Status = StatusCodes.Status400BadRequest
             },
-            ConcurrencyConflictException concurrencyException => new ProblemDetails
+            ConflictException conflictException => new ProblemDetails
             {
                 Status = StatusCodes.Status409Conflict,
                 Title = "Conflict",
-                Detail = concurrencyException.Message
+                Detail = conflictException.Message
             },
             _ => null
         };
@@ -30,6 +32,11 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsS
         if (problemDetails is null)
         {
             return false;
+        }
+
+        if (exception is ConflictException)
+        {
+            LogConflict(logger, httpContext.Request.Method, httpContext.Request.Path.Value, exception.Message);
         }
 
         httpContext.Response.StatusCode = problemDetails.Status!.Value;
@@ -41,4 +48,7 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsS
             Exception = exception
         });
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Method} {Path} conflicted with the current state: {Reason}")]
+    private static partial void LogConflict(ILogger logger, string method, string? path, string reason);
 }

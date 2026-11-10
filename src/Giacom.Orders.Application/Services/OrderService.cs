@@ -1,4 +1,5 @@
-﻿using Giacom.Orders.Application.Abstractions;
+﻿using Microsoft.Extensions.Logging;
+using Giacom.Orders.Application.Abstractions;
 using Giacom.Orders.Application.Dtos;
 using Giacom.Orders.Application.Exceptions;
 using Giacom.Orders.Domain.Entities;
@@ -6,18 +7,29 @@ using Giacom.Orders.Domain.Exceptions;
 
 namespace Giacom.Orders.Application.Services;
 
-public sealed class OrderService(IOrderRepository orderRepository, TimeProvider timeProvider) : IOrderService
+public sealed partial class OrderService(
+    IOrderRepository orderRepository,
+    TimeProvider timeProvider,
+    ILogger<OrderService> logger) : IOrderService
 {
-    public Task<IReadOnlyList<OrderSummary>> GetOrdersAsync(CancellationToken cancellationToken) =>
-        orderRepository.GetOrderSummariesAsync(statusId: null, cancellationToken);
+    public async Task<PagedResult<OrderSummary>> GetOrdersAsync(int page, int pageSize, CancellationToken cancellationToken)
+    {
+        ValidatePaging(page, pageSize);
+        return await orderRepository.GetOrderSummariesAsync(statusId: null, page, pageSize, cancellationToken);
+    }
 
     public Task<OrderDetail?> GetOrderByIdAsync(Guid orderId, CancellationToken cancellationToken) =>
         orderRepository.GetOrderDetailAsync(orderId, cancellationToken);
 
-    public async Task<IReadOnlyList<OrderSummary>> GetOrdersByStatusAsync(string? status, CancellationToken cancellationToken)
+    public async Task<PagedResult<OrderSummary>> GetOrdersByStatusAsync(
+        string? status,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
     {
+        ValidatePaging(page, pageSize);
         var orderStatus = await GetRequestedOrderStatusAsync(status, cancellationToken);
-        return await orderRepository.GetOrderSummariesAsync(orderStatus.Id, cancellationToken);
+        return await orderRepository.GetOrderSummariesAsync(orderStatus.Id, page, pageSize, cancellationToken);
     }
 
     public async Task<bool> UpdateOrderStatusAsync(Guid orderId, string? status, CancellationToken cancellationToken)
@@ -30,16 +42,20 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
             return false;
         }
 
+        var previousStatus = order.Status.Name;
+
         try
         {
             order.ChangeStatus(newStatus, GetUtcNow());
         }
-        catch (OrderStatusTransitionException exception)
+        catch (OrderStatusUnchangedException exception)
         {
-            throw new ValidationException("Status", exception.Message);
+            throw new ConflictException(exception.Message);
         }
 
         await orderRepository.SaveChangesAsync(cancellationToken);
+
+        LogOrderStatusChanged(logger, order.Id, previousStatus, newStatus.Name);
         return true;
     }
 
@@ -57,6 +73,8 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
 
         orderRepository.AddOrder(order);
         await orderRepository.SaveChangesAsync(cancellationToken);
+
+        LogOrderCreated(logger, order.Id, order.ResellerId, order.Items.Count);
 
         return await orderRepository.GetOrderDetailAsync(order.Id, cancellationToken)
             ?? throw new InvalidOperationException($"Order '{order.Id}' was not found after it was created.");
@@ -76,6 +94,26 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
+    }
+
+    private static void ValidatePaging(int page, int pageSize)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (page < 1)
+        {
+            errors["page"] = ["Page must be 1 or greater."];
+        }
+
+        if (pageSize is < 1 or > OrderLimits.MaxPageSize)
+        {
+            errors["pageSize"] = [$"Page size must be between 1 and {OrderLimits.MaxPageSize}."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new ValidationException(errors);
+        }
     }
 
     /// <summary>
@@ -103,6 +141,10 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
         {
             errors[nameof(request.Items)] = ["An order must contain at least one item."];
         }
+        else if (request.Items.Count > OrderLimits.MaxItemsPerOrder)
+        {
+            errors[nameof(request.Items)] = [$"An order can contain at most {OrderLimits.MaxItemsPerOrder} items."];
+        }
         else
         {
             var productIds = request.Items.OfType<CreateOrderItemRequest>().Select(x => x.ProductId).Distinct().ToList();
@@ -124,9 +166,10 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
                     errors[$"{itemKey}.{nameof(item.ProductId)}"] = [$"Product '{item.ProductId}' does not exist."];
                 }
 
-                if (item.Quantity <= 0)
+                if (item.Quantity is < 1 or > OrderLimits.MaxQuantityPerItem)
                 {
-                    errors[$"{itemKey}.{nameof(item.Quantity)}"] = ["Quantity must be greater than zero."];
+                    errors[$"{itemKey}.{nameof(item.Quantity)}"] =
+                        [$"Quantity must be between 1 and {OrderLimits.MaxQuantityPerItem}."];
                 }
             }
         }
@@ -178,4 +221,10 @@ public sealed class OrderService(IOrderRepository orderRepository, TimeProvider 
 
     private static string NormalizeStatusName(string? status) =>
         new string((status ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Order {OrderId} created for reseller {ResellerId} with {ItemCount} item(s)")]
+    private static partial void LogOrderCreated(ILogger logger, Guid orderId, Guid resellerId, int itemCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Order {OrderId} status changed from {PreviousStatus} to {NewStatus}")]
+    private static partial void LogOrderStatusChanged(ILogger logger, Guid orderId, string previousStatus, string newStatus);
 }

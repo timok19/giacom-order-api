@@ -31,6 +31,8 @@ public class OrderTests
         Assert.That(order.StatusId, Is.EqualTo(_createdStatus.Id));
         Assert.That(order.Status, Is.SameAs(_createdStatus));
         Assert.That(order.CreatedDate, Is.EqualTo(CreatedDate));
+        Assert.That(order.CompletedDate, Is.Null);
+        Assert.That(order.Version, Is.Zero);
     }
 
     [Test]
@@ -90,9 +92,18 @@ public class OrderTests
     }
 
     [TestCase(OrderStatus.Created, OrderStatus.InProgress)]
+    [TestCase(OrderStatus.Created, OrderStatus.Completed)]
+    [TestCase(OrderStatus.Created, OrderStatus.Failed)]
+    [TestCase(OrderStatus.InProgress, OrderStatus.Created)]
     [TestCase(OrderStatus.InProgress, OrderStatus.Completed)]
     [TestCase(OrderStatus.InProgress, OrderStatus.Failed)]
-    public void ChangeStatus_ChangesStatus_WhenTransitionIsAllowed(string currentStatus, string newStatus)
+    [TestCase(OrderStatus.Completed, OrderStatus.Created)]
+    [TestCase(OrderStatus.Completed, OrderStatus.InProgress)]
+    [TestCase(OrderStatus.Completed, OrderStatus.Failed)]
+    [TestCase(OrderStatus.Failed, OrderStatus.Created)]
+    [TestCase(OrderStatus.Failed, OrderStatus.InProgress)]
+    [TestCase(OrderStatus.Failed, OrderStatus.Completed)]
+    public void ChangeStatus_ChangesStatus_WhenStatusIsDifferent(string currentStatus, string newStatus)
     {
         // Arrange
         var order = CreateOrderInStatus(currentStatus);
@@ -105,66 +116,25 @@ public class OrderTests
         Assert.That(order.StatusId, Is.EqualTo(GetStatus(newStatus).Id));
     }
 
-    [TestCase(OrderStatus.Created, OrderStatus.Created)]
-    [TestCase(OrderStatus.Created, OrderStatus.Completed)]
-    [TestCase(OrderStatus.Created, OrderStatus.Failed)]
-    [TestCase(OrderStatus.InProgress, OrderStatus.Created)]
-    [TestCase(OrderStatus.InProgress, OrderStatus.InProgress)]
-    [TestCase(OrderStatus.Completed, OrderStatus.Created)]
-    [TestCase(OrderStatus.Completed, OrderStatus.InProgress)]
-    [TestCase(OrderStatus.Completed, OrderStatus.Failed)]
-    [TestCase(OrderStatus.Completed, OrderStatus.Completed)]
-    [TestCase(OrderStatus.Failed, OrderStatus.Created)]
-    [TestCase(OrderStatus.Failed, OrderStatus.InProgress)]
-    [TestCase(OrderStatus.Failed, OrderStatus.Completed)]
-    [TestCase(OrderStatus.Failed, OrderStatus.Failed)]
-    public void ChangeStatus_ThrowsAndKeepsStatus_WhenTransitionIsNotAllowed(string currentStatus, string newStatus)
+    [TestCase(OrderStatus.Created)]
+    [TestCase(OrderStatus.InProgress)]
+    [TestCase(OrderStatus.Completed)]
+    [TestCase(OrderStatus.Failed)]
+    public void ChangeStatus_ThrowsAndKeepsOrderUnchanged_WhenStatusIsTheSame(string status)
     {
         // Arrange
-        var order = CreateOrderInStatus(currentStatus);
+        var order = CreateOrderInStatus(status);
+        var version = order.Version;
+        var completedDate = order.CompletedDate;
 
         // Act
-        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(GetStatus(newStatus), ChangedAt));
+        var exception = Assert.Throws<OrderStatusUnchangedException>(() => order.ChangeStatus(GetStatus(status), ChangedAt));
 
         // Assert
-        Assert.That(exception!.Message, Does.Contain($"from '{currentStatus}' to '{newStatus}'"));
-        Assert.That(order.Status.Name, Is.EqualTo(currentStatus));
-    }
-
-    [Test]
-    public void ChangeStatus_ReportsAllowedNextStatuses_WhenTransitionIsNotAllowed()
-    {
-        // Arrange
-        var order = CreateOrderInStatus(OrderStatus.Created);
-
-        // Act
-        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_completedStatus, ChangedAt));
-
-        // Assert
-        Assert.That(exception!.Message, Does.EndWith("Allowed next statuses: In Progress."));
-    }
-
-    [Test]
-    public void ChangeStatus_ReportsFinalStatus_WhenOrderIsCompleted()
-    {
-        // Arrange
-        var order = CreateOrderInStatus(OrderStatus.Completed);
-
-        // Act
-        var exception = Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_failedStatus, ChangedAt));
-
-        // Assert
-        Assert.That(exception!.Message, Does.EndWith("'Completed' is a final status."));
-    }
-
-    [Test]
-    public void Create_StartsAtVersionZero()
-    {
-        // Act
-        var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, 1)], CreatedDate);
-
-        // Assert
-        Assert.That(order.Version, Is.Zero);
+        Assert.That(exception!.Message, Is.EqualTo($"Order status is already '{status}'."));
+        Assert.That(order.Status.Name, Is.EqualTo(status));
+        Assert.That(order.Version, Is.EqualTo(version));
+        Assert.That(order.CompletedDate, Is.EqualTo(completedDate));
     }
 
     [Test]
@@ -179,29 +149,6 @@ public class OrderTests
 
         // Assert
         Assert.That(order.Version, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void ChangeStatus_KeepsVersion_WhenTransitionIsNotAllowed()
-    {
-        // Arrange
-        var order = CreateOrderInStatus(OrderStatus.Created);
-
-        // Act
-        Assert.Throws<OrderStatusTransitionException>(() => order.ChangeStatus(_failedStatus, ChangedAt));
-
-        // Assert
-        Assert.That(order.Version, Is.Zero);
-    }
-
-    [Test]
-    public void Create_HasNoCompletedDate()
-    {
-        // Act
-        var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, 1)], CreatedDate);
-
-        // Assert
-        Assert.That(order.CompletedDate, Is.Null);
     }
 
     [Test]
@@ -221,8 +168,26 @@ public class OrderTests
     [TestCase(OrderStatus.Failed)]
     public void ChangeStatus_DoesNotSetCompletedDate_WhenOrderIsNotCompleted(string status)
     {
+        // Arrange
+        var order = CreateOrderInStatus(OrderStatus.Created);
+
         // Act
-        var order = CreateOrderInStatus(status);
+        order.ChangeStatus(GetStatus(status), ChangedAt);
+
+        // Assert
+        Assert.That(order.CompletedDate, Is.Null);
+    }
+
+    [TestCase(OrderStatus.Created)]
+    [TestCase(OrderStatus.InProgress)]
+    [TestCase(OrderStatus.Failed)]
+    public void ChangeStatus_ClearsCompletedDate_WhenOrderLeavesCompleted(string status)
+    {
+        // Arrange
+        var order = CreateOrderInStatus(OrderStatus.Completed);
+
+        // Act
+        order.ChangeStatus(GetStatus(status), ChangedAt);
 
         // Assert
         Assert.That(order.CompletedDate, Is.Null);
@@ -232,22 +197,13 @@ public class OrderTests
     {
         var order = Order.Create(Guid.NewGuid(), Guid.NewGuid(), _createdStatus, [(_mailboxProduct, 1)], CreatedDate);
 
-        foreach (var nextStatus in GetWorkflowPathTo(status))
+        if (status != OrderStatus.Created)
         {
-            order.ChangeStatus(GetStatus(nextStatus), ChangedAt);
+            order.ChangeStatus(GetStatus(status), CreatedDate);
         }
 
         return order;
     }
-
-    private static string[] GetWorkflowPathTo(string status) => status switch
-    {
-        OrderStatus.Created => [],
-        OrderStatus.InProgress => [OrderStatus.InProgress],
-        OrderStatus.Completed => [OrderStatus.InProgress, OrderStatus.Completed],
-        OrderStatus.Failed => [OrderStatus.InProgress, OrderStatus.Failed],
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, null)
-    };
 
     private OrderStatus GetStatus(string status) => status switch
     {
